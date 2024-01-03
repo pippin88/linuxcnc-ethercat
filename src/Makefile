@@ -1,8 +1,8 @@
 all: all-deps realtime user
-.PHONY: all all-deps install clean install-user install-realtime user realtime
+.PHONY: all all-deps install clean install-user install-realtime user realtime 
 
 -include ../config.mk
--include $(MODINC)
+include $(MODINC)
 
 RTLDFLAGS += -Wl,-rpath,$(LIBDIR)
 RTEXTRA_LDFLAGS += -Wl,--whole-archive liblcecdevices.a -Wl,--no-whole-archive -L$(LIBDIR) -llinuxcnchal -lethercat -lrt
@@ -43,7 +43,7 @@ $(lcec-conf-objs): EXTRA_CFLAGS := $(filter-out -Wframe-larger-than=%,$(EXTRA_CF
 	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
 	rm -f $@.$$$$
 
-include $(all-srcs:.c=.d)
+#include $(all-srcs:.c=.d)
 all-deps: $(all-deps)
 
 

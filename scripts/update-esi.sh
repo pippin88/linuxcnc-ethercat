@@ -12,9 +12,10 @@ curl -H "$useragent" -L "$beckhoffurl" -o beckhoff.zip
 curl -L "$omronurl1" -o omron1.zip
 curl -L "$omronurl2" -o omron2.zip
 
-unzip -j beckhoff.zip -d tmpesi
-unzip -j omron1.zip -d tmpesi
-unzip -j omron2.zip -d tmpesi
+# Unzip, but don't overwrite files.
+unzip -nj beckhoff.zip -d tmpesi
+unzip -nj omron1.zip -d tmpesi
+unzip -nj omron2.zip -d tmpesi
 
 cd esidecoder
 go build esidecoder.go

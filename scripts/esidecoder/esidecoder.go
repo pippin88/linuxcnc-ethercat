@@ -4,11 +4,11 @@ import (
 	"encoding/xml"
 	"flag"
 	"fmt"
-	"strconv"
 	"golang.org/x/net/html/charset"
 	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -28,13 +28,60 @@ type ESIDeviceURL struct {
 }
 
 type ESIDeviceInfo struct {
-	Current string              `xml:"Electrical>EBusCurrent" yaml:",omitempty"`
-	Ports   []ESIDeviceInfoPort `xml:"Port" yaml:",omitempty"`
+	Current         string              `xml:"Electrical>EBusCurrent" yaml:",omitempty"`
+	RequestTimeout  int                 `xml:"Mailbox>Timeout>RequestTimeout" yaml:",omitempty"`
+	ResponseTimeout int                 `xml:"Mailbox>Timeout>ResponseTimeout" yaml:",omitempty"`
+	Ports           []ESIDeviceInfoPort `xml:"Port" yaml:",omitempty"`
 }
 
 type ESIDeviceInfoPort struct {
 	Type  string
 	Label string
+}
+
+type ESIProfile struct {
+	ProfileNo   int            `xml:"ProfileNo" yaml:",omitempty"`
+	Channels    int            `xml:"ChannelCount" yaml:",omitempty"`
+	AddInfo     int            `xml:"AddInfo" yaml:",omitempty"` // what is "AddInfo?"
+	DataTypes   []*ESIDataType `xml:"Dictionary>DataTypes>DataType"`
+	DataTypeMap map[string]*ESIDataType
+	Objects     []*ESIObject `xml:"Dictionary>Objects>Object" yaml:"Objects,omitempty"`
+}
+
+type ESIDataType struct {
+	Name     string                `xml:"Name"`
+	BitSize  int                   `xml:"BitSize"`
+	SubItems []*ESIDataTypeSubItem `xml:"SubItem"`
+}
+
+type ESIDataTypeSubItem struct {
+	SubIndex  int    `xml:"SubIdx"`
+	Name      string `xml:"Name"`
+	Type      string `xml:"Type"`
+	BitSize   int    `xml:"BitSize"`
+	BitOffset int    `xml:"BitOffs"`
+	Access    string `xml:"Flags>Access"`
+	Category  string `xml:"Flags>Category"`
+}
+
+type ESIObject struct {
+	Index    string              `xml:"Index" yaml:",omitempty"`
+	Name     string              `xml:"Name" yaml:",omitempty"`
+	TypeName string              `xml:"Type" yaml:",omitempty"`
+	BitSize  int                 `xml:"BitSize" yaml:",omitempty"`
+	SubItems []*ESIObjectSubItem `xml:"Info>SubItem" yaml:",omitempty"`
+	// Info > (DefaultData | SubItem | ...
+	// Flags > (Access | Category | ...
+}
+
+type ESIObjectSubItem struct {
+	Name        string `xml:"Name"\ yaml:",omitempty"`
+	DefaultData string `xml:"Info>DefaultData" yaml:",omitempty"`
+	Type        string `yaml:"Type,omitempty"`
+	BitSize     int    `yaml:"BitSize,omitempty"`
+	BitOffset   int    `yaml:"BitOffs,omitempty"`
+	Access      string `yaml:"Access,omitempty"`
+	Category    string `yaml:"Category,omitempty"`
 }
 
 type ESIDevice struct {
@@ -49,18 +96,41 @@ type ESIDevice struct {
 
 	Names     []ESIName      `xml:"Name" yaml:",omitempty"`
 	URLs      []ESIDeviceURL `xml:"URL" yaml:",omitempty"`
-	Info      ESIDeviceInfo  `xml:"Info" yaml:",omitempty"`
+	Info      ESIDeviceInfo  `xml:"Info" yaml:"Info,omitempty"`
 	GroupType string         `xml:"GroupType" yaml:",omitempty"` // maps to ESIGroup.Type
-	Fmmu      []string       `xml:"Fmmu" yaml:",omitempty,flow"` // "Inputs"/"Outputs"
+	//Fmmu      []string       `xml:"Fmmu" yaml:",omitempty,flow"` // "Inputs"/"Outputs"
 
-	ShortType   string `yaml:"Type"`
-	ProductCode string `yaml:"ProductCode"`
-	RevisionNo  string `yaml:"RevisionNo"`
-	EnglishURL  string `yaml:"URL"`
-	EnglishName string `yaml:"Name"`
-	GroupName   string `yaml:"DeviceGroup"`
-	Vendor      string `yaml:"Vendor"`
-	VendorID    string `yaml:"VendorID"`
+	ShortType   string      `yaml:"Type"`
+	ProductCode string      `yaml:"ProductCode"`
+	RevisionNo  string      `yaml:"RevisionNo"`
+	EnglishURL  string      `yaml:"URL"`
+	EnglishName string      `yaml:"Name"`
+	GroupName   string      `yaml:"DeviceGroup"`
+	Vendor      string      `yaml:"Vendor"`
+	VendorID    string      `yaml:"VendorID"`
+	Profile     ESIProfile  `yaml:"Profile,omitempty"`
+	TxPDOs      []*ESIRxPDO `xml:"TxPdo" yaml:"TxPDOs,omitempty"`
+	RxPDOs      []*ESITxPDO `xml:"RxPdo" yaml:"RxPDOs,omitempty"`
+}
+
+type ESIRxPDO struct {
+	Index   string         `xml:"Index" yaml:"Index,omitempty"`
+	Name    string         `xml:"Name" yaml:"Name,omitempty"`
+	Entries []*ESIPDOEntry `xml:"Entry" yaml:"Entry,omitempty"`
+}
+
+type ESITxPDO struct {
+	Index   string         `xml:"Index" yaml:"Index,omitempty"`
+	Name    string         `xml:"Name" yaml:"Name,omitempty"`
+	Entries []*ESIPDOEntry `xml:"Entry" yaml:"Entry,omitempty"`
+}
+
+type ESIPDOEntry struct {
+	Name     string `xml:"Name" yaml:"Name,omitempty"`
+	Index    string `xml:"Index" yaml:"Index,omitempty"`
+	SubIndex string `xml:"SubIndex" yaml:"SubIndex,omitempty"`
+	BitLen   int    `xml:"BitLen" yaml:"BitLen,omitempty"`
+	DataType string `xml:"DataType" yaml:"DataType,omitempty"`
 }
 
 type ESIGroup struct {
@@ -114,7 +184,7 @@ func parseESIFile(filename string) ([]*ESIDevice, error) {
 	// - We want to strip extra data (non-English names and URLs, group data, etc
 	for _, d := range esiData.Devices {
 		d.Vendor = esiData.VendorName
-		d.VendorID = fixHexFormat(esiData.VendorID)
+		d.VendorID = fixHexFormat(esiData.VendorID, 8)
 
 		for _, n := range d.Names {
 			if n.LanguageID == "1033" { // English
@@ -126,8 +196,67 @@ func parseESIFile(filename string) ([]*ESIDevice, error) {
 				d.EnglishURL = u.URL
 			}
 		}
-		d.Type.ProductCode = fixHexFormat(d.Type.ProductCode)
-		d.Type.RevisionNo = fixHexFormat(d.Type.RevisionNo)
+
+		d.Profile.DataTypeMap = make(map[string]*ESIDataType)
+		// Build type map
+		for _, t := range d.Profile.DataTypes {
+			d.Profile.DataTypeMap[t.Name] = t
+		}
+		d.Profile.DataTypes = nil
+
+		for _, txpdo := range d.TxPDOs {
+			txpdo.Index = fixHexFormat(txpdo.Index, 4)
+			for _, entry := range txpdo.Entries {
+				entry.Index = fixHexFormat(entry.Index, 4)
+				entry.SubIndex = fixHexFormat(entry.SubIndex, 2)
+			}
+		}
+		for _, rxpdo := range d.RxPDOs {
+			rxpdo.Index = fixHexFormat(rxpdo.Index, 4)
+			for _, entry := range rxpdo.Entries {
+				entry.Index = fixHexFormat(entry.Index, 4)
+				entry.SubIndex = fixHexFormat(entry.SubIndex, 2)
+			}
+		}
+
+		// For now, we only want to keep 0x6xxx, 0x7xxx, and 0x8xxx objects.
+		// Otherwise the generated ESI file is *huge*.
+		newObjects := []*ESIObject{}
+		for _, o := range d.Profile.Objects {
+			typeObject := d.Profile.DataTypeMap[o.TypeName]
+			o.Index = fixHexFormat(o.Index, 4)
+
+			if typeObject != nil {
+				submap := make(map[string]*ESIDataTypeSubItem)
+				for _, ts := range typeObject.SubItems {
+					submap[ts.Name] = ts
+				}
+				for _, s := range o.SubItems {
+					subtype := submap[s.Name]
+					if subtype != nil {
+						s.Type = subtype.Type
+						s.BitSize = subtype.BitSize
+						s.BitOffset = subtype.BitOffset
+						s.Access = subtype.Access
+						s.Category = subtype.Category
+					}
+				}
+			}
+
+			switch o.Index[0:3] {
+			case "0x6": // input, keep
+				newObjects = append(newObjects, o)
+			case "0x7": // output, keep
+				newObjects = append(newObjects, o)
+			default: // other, delete for now
+
+			}
+		}
+		d.Profile.Objects = newObjects
+		d.Profile.DataTypeMap = nil // Don't want to marshal it.
+
+		d.Type.ProductCode = fixHexFormat(d.Type.ProductCode, 8)
+		d.Type.RevisionNo = fixHexFormat(d.Type.RevisionNo, 8)
 		d.GroupName = groupMap[d.GroupType]
 		d.ShortType = d.Type.Type
 		d.ProductCode = d.Type.ProductCode
@@ -141,7 +270,7 @@ func parseESIFile(filename string) ([]*ESIDevice, error) {
 	return devices, nil
 }
 
-func fixHexFormat(in string) string {
+func fixHexFormat(in string, length int) string {
 	// No need to "fix" empty strings
 	if len(in) == 0 {
 		return in
@@ -155,7 +284,7 @@ func fixHexFormat(in string) string {
 		if err != nil {
 			panic(err)
 		}
-		return fmt.Sprintf("0x%08x", v)
+		return fmt.Sprintf("0x%0*x", length, v)
 	}
 
 	// Okay, it's probably just an integer.  Beckhoff likes that.  Convert to hex.
@@ -164,7 +293,7 @@ func fixHexFormat(in string) string {
 		panic(err)
 	}
 
-	return fmt.Sprintf("0x%08x", i)
+	return fmt.Sprintf("0x%0*x", length, i)
 }
 
 func main() {
@@ -196,6 +325,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	fmt.Fprintf(os.Stderr, "Writing %d bytes to output file\n", len(y))
 
 	if *output != "" {
 		err = os.WriteFile(*output, y, 0644)
