@@ -28,6 +28,8 @@ static int lcec_el6090_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_
 
 static lcec_typelist_t types[]={
   { "EL6090", LCEC_BECKHOFF_VID, 0x17ca3052, LCEC_EL6090_PDOS, 0, NULL, lcec_el6090_init},
+  { "EP6090", LCEC_BECKHOFF_VID, 0x17ca4052, LCEC_EL6090_PDOS, 0, NULL, lcec_el6090_init},
+  { "EPP6090", LCEC_BECKHOFF_VID, 0x647742a9, LCEC_EL6090_PDOS, 0, NULL, lcec_el6090_init},
   { NULL },
 };
 ADD_TYPES(types);
