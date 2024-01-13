@@ -23,6 +23,7 @@ static int lcec_el5101_init(int comp_id, struct lcec_slave *slave, ec_pdo_entry_
 
 static lcec_typelist_t types[]={
   { "EL5101", LCEC_BECKHOFF_VID, 0x13ed3052, LCEC_EL5101_PDOS, 0, NULL, lcec_el5101_init},
+  { "EJ5101", LCEC_BECKHOFF_VID, 0x13ed2852, LCEC_EL5101_PDOS, 0, NULL, lcec_el5101_init},
   { NULL },
 };
 ADD_TYPES(types);
