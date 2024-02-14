@@ -299,6 +299,13 @@ typedef struct {
   const double value;
 } lcec_lookuptable_double_t;
 
+/// @brief Contains a list of SDO addresses.
+typedef struct {
+  int count;
+  uint16_t *sdos;
+} lcec_sdolist_t;
+
+
 lcec_slave_t *lcec_slave_by_index(struct lcec_master *master, int index) __attribute__((nonnull));
 
 int lcec_read_sdo(struct lcec_slave *slave, uint16_t index, uint8_t subindex, uint8_t *target, size_t size);
@@ -348,5 +355,7 @@ lcec_pdo_entry_reg_t *lcec_allocate_pdo_entry_reg(int size);
 int lcec_pdo_init(struct lcec_slave *slave, uint16_t idx, uint16_t sidx, unsigned int *os, unsigned int *bp);
 int lcec_pdo_entry_reg_len(lcec_pdo_entry_reg_t *reg);
 int lcec_append_pdo_entry_reg(lcec_pdo_entry_reg_t *dest, lcec_pdo_entry_reg_t *src);
+int lcec_probe_device(struct lcec_slave *slave);
+lcec_sdolist_t *lcec_probe_device_sdos(struct lcec_slave *slave);
 
 #endif

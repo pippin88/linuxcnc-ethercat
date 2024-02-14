@@ -228,6 +228,118 @@ lcec_class_cia402_options_t *lcec_cia402_options_multi_axes(int axis) {
   return opts;
 }
 
+/// @brief Allocates an `lcec_class_cia402_options_t` and initializes
+/// it using the list of SDO addresses that the device claims to
+/// support.
+///
+/// This is probably a bad idea, for two reasons:
+///
+/// - It reaches into the internals of the EtherCAT Master library to
+///   efficiently probe which SDOs a device supports.
+/// - It's going to make mistakes and attempt to enable features that
+///   don't actually work on  specific devices.
+///
+/// OTOH, it's probably going to get us partially working devices *really* quickly.
+lcec_class_cia402_multioptions_t *lcec_cia402_options_auto(struct lcec_slave *slave) {
+  lcec_sdolist_t *sdos = lcec_probe_device_sdos(slave);
+  int i;
+  int channels=-1;  // Channel N exists iff the device reports that SDO 0x6502+0x800*N exists.
+  uint32_t modes;
+
+  if (sdos==NULL) {
+    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "Probe returned NULL!\n");
+    return NULL;
+  }
+
+  rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "Probe found %d SDOs!\n", sdos->count);  
+
+  // Figure out how many channels this device supports.
+  for (i=0; i<sdos->count; i++) {
+    uint16_t s = sdos->sdos[i];
+    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "Examining SDO 0x%04x...\n", s);
+
+    if (s < 0x6000 || s >= 0xb000) continue;
+
+    int channel = (s-0x6000) >> 11;
+    uint16_t offset = s & 0x7ff;
+
+    if (offset == 0x502 && channel > channels) {
+      channels = channel+1;
+    }
+  }
+
+  lcec_class_cia402_multioptions_t *opts;
+  opts = hal_malloc(sizeof(lcec_class_cia402_multioptions_t));
+  if (opts==NULL) return NULL;
+
+  if (channels==0) {
+    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "No channels found!\n");
+    return NULL;
+  }
+
+  rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "auto: found %d channels\n", channels);
+  opts->count = channels;
+  if (channels==1) {
+    opts->opts =  hal_malloc(sizeof(lcec_class_cia402_options_t *));
+    opts->opts[0] = lcec_cia402_options_single_axis();
+  } else {
+    opts->opts =  hal_malloc(sizeof(lcec_class_cia402_options_t *)*channels);
+    for (i=0;i<channels;i++)
+      opts->opts[i] = lcec_cia402_options_multi_axes(i);
+  }
+  
+  // Now, let's set up options for each channel
+  for (i=0; i<sdos->count; i++) {
+    uint16_t s = sdos->sdos[i];
+    if (s < 0x6000 || s >= 0xb000) continue;
+
+    int channel = (s-0x6000) >> 11;
+    uint16_t offset = s & 0x7ff;
+
+    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "Examining SDO 0x%04x (ch %d, offset 0x%03x\n", s, channel, offset);
+
+#define CASE_ENABLE_OPTION(pin_name, offset) case offset: \
+    rtapi_print_msg(RTAPI_MSG_ERR, LCEC_MSG_PFX "auto: Enabling " #pin_name " for channel %d\n", channel); \
+    opts->opts[channel]->enable_##pin_name = 1; \
+    break
+    
+    switch (offset) {
+    case 0x502:
+      lcec_read_sdo32(slave, s, 0, &modes);
+      
+      opts->opts[channel]->enable_pp = modes & 1 << 0;
+      opts->opts[channel]->enable_vl = modes & 1 << 1;
+      opts->opts[channel]->enable_pv = modes & 1 << 2;
+      //opts->opts[channel]->enable_tq = modes & 1 << 3;
+      opts->opts[channel]->enable_hm = modes & 1 << 5;
+      opts->opts[channel]->enable_ip = modes & 1 << 6;
+      opts->opts[channel]->enable_csp = modes & 1 << 7;
+      opts->opts[channel]->enable_csv = modes & 1 << 8;
+      opts->opts[channel]->enable_cst = modes & 1 << 9;
+      break;
+      
+      CASE_ENABLE_OPTION(actual_following_error,  0xf4);
+      CASE_ENABLE_OPTION(actual_torque,  0x77);
+      CASE_ENABLE_OPTION(actual_velocity_sensor,  0x69);
+      CASE_ENABLE_OPTION(following_error_timeout,  0x66);
+      CASE_ENABLE_OPTION(following_error_window,  0x65);
+      CASE_ENABLE_OPTION(home_accel,  0x9a);
+      // CASE_ENABLE_OPTION(interpolation_time_period,  0xc2, 1);
+      CASE_ENABLE_OPTION(motion_profile,  0x86);
+      CASE_ENABLE_OPTION(motor_rated_torque,  0x76);
+      CASE_ENABLE_OPTION(opmode,  0x60);
+      CASE_ENABLE_OPTION(profile_accel,  0x83);
+      CASE_ENABLE_OPTION(profile_decel,  0x84);
+      CASE_ENABLE_OPTION(profile_end_velocity,  0x82);
+      CASE_ENABLE_OPTION(profile_max_velocity,  0x7f);
+      CASE_ENABLE_OPTION(profile_velocity,  0x81);
+      CASE_ENABLE_OPTION(torque_maximum,  0x72);
+    }
+  }
+
+  return opts;
+}
+
 /// @brief Allocates a `lcec_syncs_t` and fills in the CiA 402 portion of it using data from `options`.
 ///
 /// @param opt A `lcec_class_cia402_options_t` structure that describes the options in use.
@@ -720,3 +832,4 @@ int lcec_cia402_handle_modparam(struct lcec_slave *slave, const lcec_slave_modpa
       return 1;
   }
 }
+

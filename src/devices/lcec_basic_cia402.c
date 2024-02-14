@@ -61,6 +61,7 @@ static int lcec_basic_cia402_init(int comp_id, struct lcec_slave *slave);
 // same driver.
 static lcec_typelist_t types[] = {
     {"basic_cia402", /* fake vid */ -1, /* fake pid */ -1, 0, NULL, lcec_basic_cia402_init, /* modparams implicitly added below */},
+    {"auto_cia402", /* fake vid */ -1, /* fake pid */ -1, 0, NULL, lcec_basic_cia402_init, NULL /* modparams implicitly added below */, 1},
     {NULL},
 };
 ADD_TYPES_WITH_CIA402_MODPARAMS(types, modparams_lcec_basic_cia402)
@@ -138,7 +139,19 @@ static int lcec_basic_cia402_init(int comp_id, struct lcec_slave *slave) {
   slave->proc_read = lcec_basic_cia402_read;
   slave->proc_write = lcec_basic_cia402_write;
 
-  lcec_class_cia402_options_t *options = lcec_cia402_options_single_axis();
+  // *IN GENERAL*, you shouldn't use this.
+  lcec_class_cia402_options_t *options;
+  if (slave->flags) {
+    lcec_class_cia402_multioptions_t *mu = lcec_cia402_options_auto(slave);
+    if (mu==NULL) {
+      // error
+      return -EIO;
+    }
+    options = mu->opts[0];
+  } else {
+    options = lcec_cia402_options_single_axis();
+  }
+  
   // XXXX: set which options this device supports.  This controls
   // which pins are registered and which PDOs are mapped.  See
   // lcec_class_cia402.h for the full list of what is currently

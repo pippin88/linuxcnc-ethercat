@@ -83,6 +83,12 @@ typedef struct {
 
 } lcec_class_cia402_options_t;
 
+/// @brief This discribes options for multiple axes at once.
+typedef struct {
+  int count;
+  lcec_class_cia402_options_t **opts;
+} lcec_class_cia402_multioptions_t;
+
 /// This is the internal version of `lcec_class_cia402_options_t`.  It
 /// lists each specific pin (or atomic set of pins, in the case of
 /// `opmode`), and decisions about mapping/etc can be based on this.
@@ -201,6 +207,7 @@ void lcec_cia402_write(struct lcec_slave *slave, lcec_class_cia402_channel_t *da
 void lcec_cia402_write_all(struct lcec_slave *slave, lcec_class_cia402_channels_t *channels);
 lcec_class_cia402_options_t *lcec_cia402_options_single_axis(void);
 lcec_class_cia402_options_t *lcec_cia402_options_multi_axis(void);
+lcec_class_cia402_multioptions_t *lcec_cia402_options_auto(struct lcec_slave *slave);
 int lcec_cia402_handle_modparam(struct lcec_slave *slave, const lcec_slave_modparam_t *p);
 lcec_modparam_desc_t *lcec_cia402_channelized_modparams(lcec_modparam_desc_t const *orig);
 lcec_modparam_desc_t *lcec_cia402_modparams(lcec_modparam_desc_t const *device_mps);
