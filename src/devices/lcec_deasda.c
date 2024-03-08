@@ -116,6 +116,11 @@ typedef struct {
   hal_bit_t *di_6;
   hal_bit_t *di_7;
 
+  hal_bit_t *do_1;
+  hal_bit_t *do_2;
+  hal_bit_t *do_3;
+  hal_bit_t *do_4;
+
   lcec_class_enc_data_t enc;
   lcec_class_enc_data_t extenc;
 
@@ -129,6 +134,7 @@ typedef struct {
   unsigned int control_pdo_os;
   unsigned int cmdvalue_pdo_os;
   unsigned int divalue_pdo_os;
+  unsigned int doutvalue_pdo_os;
   unsigned int torque_pdo_os;
 
   hal_bit_t last_switch_on;
@@ -176,6 +182,10 @@ static const lcec_pindesc_t slave_pins[] = {
     {HAL_BIT, HAL_OUT, offsetof(lcec_deasda_data_t, neg_lim_switch), "%s.%s.%s.din-neg-lim"},
     {HAL_BIT, HAL_OUT, offsetof(lcec_deasda_data_t, pos_lim_switch), "%s.%s.%s.din-pos-lim"},
     {HAL_BIT, HAL_OUT, offsetof(lcec_deasda_data_t, home_switch), "%s.%s.%s.din-home"},
+    {HAL_BIT, HAL_IN, offsetof(lcec_deasda_data_t, do_1), "%s.%s.%s.dout-1"},
+    {HAL_BIT, HAL_IN, offsetof(lcec_deasda_data_t, do_2), "%s.%s.%s.dout-2"},
+    {HAL_BIT, HAL_IN, offsetof(lcec_deasda_data_t, do_3), "%s.%s.%s.dout-3"},
+    {HAL_BIT, HAL_IN, offsetof(lcec_deasda_data_t, do_4), "%s.%s.%s.dout-4"},
 
     {HAL_TYPE_UNSPECIFIED, HAL_DIR_UNSPECIFIED, -1, NULL},
 };
@@ -207,6 +217,7 @@ static ec_pdo_entry_info_t lcec_deasda_in[] = {
     {0x2511, 0x00, 32},  // External encoder
     {0x6077, 0x00, 16},  // Torque
     {0x60FD, 0x00, 32},  // Digital Inputs
+    {0x60FE, 0x00, 32},  // Digital Outputs
 
 };
 
@@ -342,6 +353,7 @@ static int lcec_deasda_init(int comp_id, lcec_slave_t *slave) {
     lcec_pdo_init(slave, 0x60FF, 0x00, &hal_data->cmdvalue_pdo_os, NULL);
     lcec_pdo_init(slave, 0x6077, 0x00, &hal_data->torque_pdo_os, NULL);
     lcec_pdo_init(slave, 0x60FD, 0x00, &hal_data->divalue_pdo_os, NULL);
+    lcec_pdo_init(slave, 0x60FE, 0x01, &hal_data->doutvalue_pdo_os, NULL);
 
     // export pins common
     if ((err = lcec_pin_newf_list(hal_data, slave_pins, LCEC_MODULE_NAME, master->name, slave->name)) != 0) return err;
@@ -361,6 +373,7 @@ static int lcec_deasda_init(int comp_id, lcec_slave_t *slave) {
     lcec_pdo_init(slave, 0x607A, 0x00, &hal_data->cmdvalue_pdo_os, NULL);
     lcec_pdo_init(slave, 0x6077, 0x00, &hal_data->torque_pdo_os, NULL);
     lcec_pdo_init(slave, 0x60FD, 0x00, &hal_data->divalue_pdo_os, NULL);
+    lcec_pdo_init(slave, 0x60FE, 0x01, &hal_data->doutvalue_pdo_os, NULL);
 
     // export pins common
     if ((err = lcec_pin_newf_list(hal_data, slave_pins, LCEC_MODULE_NAME, master->name, slave->name)) != 0) return err;
@@ -608,6 +621,17 @@ static void lcec_deasda_write_csp(lcec_slave_t *slave, long period) {
   // Calculation accordingly based on pprev and pos_scale (i.e. pitch of ball screw)
   pos_puu = (int32_t)(*(hal_data->cmd_value) * hal_data->pprev / hal_data->pos_scale);
   EC_WRITE_S32(&pd[hal_data->cmdvalue_pdo_os], pos_puu);
+
+
+//Digital out pins - guessing - no idea what I am doing
+status_dout = 0;
+  *(hal_data->dout_1) = (status_dout >> 16) & 0x01;
+  *(hal_data->dout_2) = (status_dout >> 17) & 0x01;
+  *(hal_data->dout_3) = (status_dout >> 18) & 0x01;
+  *(hal_data->dout_4) = (status_dout >> 19) & 0x01;
+
+EC_WRITE_S32(&pd[hal_data->doutvalue_pdo_os], status_dout);
+    
 }
 
 // Match the drive mode configuration in modparams and return the settings for that particular operational mode.
